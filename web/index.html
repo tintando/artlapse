@@ -183,6 +183,9 @@
   #empty h2 { font-size:24px; font-weight:900; border:none; margin-bottom:8px;
               background:var(--grad); -webkit-background-clip:text; background-clip:text; color:transparent; }
   #empty p { color:var(--muted); margin:0 0 18px; }
+  /* a browser that can't make a timelapse at all: said before anything is loaded */
+  #noCodecs { text-align:left; margin:0 0 18px; border-left-color:var(--ex); }
+  #loadVideo:disabled { opacity:.45; cursor:not-allowed; filter:none; }
   #empty button.primary { width:auto; padding:11px 28px; font-size:15px; }
   #toolHint { margin:8px 0 0; min-height:3.6em; }
   .ok { color:var(--ok); }
@@ -244,7 +247,8 @@
     <canvas id="overlay"></canvas>
   </div>
   <div id="empty" hidden><h2>Start with your stream's recording</h2>
-    <p>Load the video file of the stream you painted in. It stays on this computer: Artlapse works on it in this browser, and nothing is uploaded.</p>
+    <p>Load the video file of the stream you painted in. It stays on this device: Artlapse works on it in this browser, and nothing is uploaded.</p>
+    <div class="note" id="noCodecs" hidden><span></span></div>
     <button class="primary" id="emptyLoad">Load video…</button> <button id="reopen" hidden></button>
     <p style="margin:14px 0 0">or <button id="emptyImport">Import a setup…</button> exported from another stream</p></div>
   </div>
@@ -356,7 +360,7 @@
         The Target's frame can't be in a cut, or outside Start–End.</p></div>
     <div><h3>Making the timelapse</h3>
       <p>Once nothing is marked in red, press <b>Make timelapse</b>. It follows the canvas through the stream, rebuilds
-        the painting, then makes the video, all on this computer's graphics card (in a browser that can't use it, on the
+        the painting, then makes the video, all on this device's graphics card (in a browser that can't use it, on the
         processor instead, much more slowly); a long stream takes a while, so keep this tab open.
         Made again after a change, it redoes only what the change affects: a new length only remakes the video.
         Save the video before you close the tab: it isn't kept.</p></div>
@@ -370,8 +374,8 @@
 </div></div>
 <div id="slow" class="modal" hidden><div class="card" role="dialog" aria-labelledby="slowTitle">
   <h1 id="slowTitle">This may be very slow here</h1>
-  <p class="lead">Artlapse does all its work in this browser, on this device's graphics card. On a phone or tablet that
-    can be very slow, and the browser may stop the work when you switch to another app or lock the screen.
+  <p class="lead">Artlapse does all its work in this browser, on this device: on its graphics card where the browser
+    can use it, otherwise on its processor. On a phone or tablet either can be very slow, and the browser may stop the work when you switch to another app or lock the screen.
     A computer with Chrome or Edge does it much faster.</p>
   <div class="row" style="margin-top:16px"><button id="slowOk" class="primary" style="width:auto; margin-left:auto">Try it anyway</button></div>
 </div></div>
@@ -896,7 +900,7 @@ function renderRun(st) {
   $('cpuNote').hidden = cpu == null;
   if (cpu != null) $('cpuNote').querySelector('span').innerHTML = running
     ? `<b>Running on the processor</b>, not the graphics card, because ${esc(cpu)}: this takes much longer.`
-    : `<b>No graphics card here.</b> The timelapse will be made on this computer's processor, because ${esc(cpu)}.
+    : `<b>Not on the graphics card.</b> The timelapse will be made on this device's processor, because ${esc(cpu)}.
        It comes out the same but takes much longer. Chrome or Edge on a computer use the graphics card.`;
   $('runStatus').hidden = !running; $('run').hidden = running;
   $('runChanged').hidden = !(st.changed && (running || st.state === 'done'));
@@ -1107,6 +1111,19 @@ const closeSlow = () => { slow.hidden = true; try { localStorage.setItem(WARNED,
 document.getElementById('slowOk').onclick = closeSlow;
 slow.onclick = ev => { if (ev.target === slow) closeSlow(); };
 try { if (matchMedia('(pointer: coarse)').matches && localStorage.getItem(WARNED) !== '1') slow.hidden = false; } catch (e) {}
+
+// A browser without WebCodecs can't read the recording or write the timelapse: it says so before a video is
+// picked, and the ways to load one are off.
+{
+  const why = api.missingCodecs();
+  if (why) {
+    const note = document.getElementById('noCodecs');
+    note.hidden = false;
+    note.querySelector('span').innerHTML = `<b>This browser can't make timelapses:</b> ${why}. On Android, use Chrome;
+      on a computer or an iPhone, a recent Chrome, Edge, Firefox or Safari.`;
+    for (const id of ['emptyLoad', 'loadVideo', 'reopen']) document.getElementById(id).disabled = true;
+  }
+}
 
 load().catch(e => status('Could not load the setup: ' + e.message, true));
 </script>

@@ -1,6 +1,6 @@
 # Media
 
-The video and images in the README, what belongs in each, and how each was made. Every file here is used by the README, and every picture the README shows is here or in `docs/figures/`.
+The video and images in the README, what belongs in each, and how each was made. Every file here is used by the README (the video through its upload to GitHub, below), and every picture the README shows is here or in `docs/figures/`.
 
 The stream and the illustration are SlimyMana's ([x.com/SlimyMana](https://x.com/SlimyMana)): her stream in `work/slimy_2_whole`, from the run of 2026-10-29 (engine 3327dae141, config 9663a3b9be; register on the CPU, composite and render on CUDA).
 
@@ -19,15 +19,7 @@ drawtext=fontfile=$F:text='The painting, rebuilt by Artlapse':x=w/2+(w/2-text_w)
   -c:v libx264 -preset slow -crf 27 -pix_fmt yuv420p -movflags +faststart docs/media/stream-and-painting.mp4
 ```
 
-GitHub plays a video in a README only when it was uploaded through its web editor. Until then the README shows the still below, linking to this file. To play it in place: edit README.md on github.com, drag this file into the editor, and replace the `<a ...><img ...></a>` line with the `https://github.com/user-attachments/assets/...` link GitHub inserts, on a line of its own.
-
-## stream-and-painting.jpg
-
-The still the README shows in the video's place: frame 11.6 s of the video, stream time 3:03:22. The canvas is tilted about 40° and zoomed in on the stream, with the avatar and the chat over it; on the right the painting is upright and whole.
-
-```bash
-ffmpeg -n -ss 11.6 -i docs/media/stream-and-painting.mp4 -frames:v 1 -q:v 3 docs/media/stream-and-painting.jpg
-```
+GitHub plays a video in a README only when it was uploaded through its web editor, so the README plays this file from its upload, https://github.com/user-attachments/assets/aa40c0b5-fddf-482a-9894-c7fc32e7cd53, on a line of its own. A new version of the video is uploaded the same way: edit README.md on github.com, drag the file into the editor, and replace that link with the one GitHub inserts.
 
 ## setup-page.png
 

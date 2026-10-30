@@ -217,6 +217,13 @@ interface RunStatus {
 const st: RunStatus = { state: 'idle', stages: {}, progress: {}, started: null, ended: null, lines: [], changed: false, timelapse: null, cpu: undefined };
 const forceCpu = new URLSearchParams(location.search).has('cpu');
 
+/** What this browser lacks to make a timelapse at all, or null: WebCodecs reads the recording's frames and
+ * writes the videos (Firefox for Android has neither). */
+export function missingCodecs(): string | null {
+  const lacks = [typeof VideoDecoder === 'undefined' && 'read', typeof VideoEncoder === 'undefined' && 'write'].filter(Boolean);
+  return lacks.length ? `it can't ${lacks.join(' or ')} video frames (it has no WebCodecs)` : null;
+}
+
 /** Why the timelapse will be made on the processor, or null when this browser offers a GPU. The worker
  * decides for itself; this is what the page can tell before a run. */
 export async function gpuProblem(): Promise<string | null> {

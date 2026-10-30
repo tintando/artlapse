@@ -16,6 +16,7 @@ export class Video {
   private constructor(readonly input: Input, readonly track: InputVideoTrack, readonly info: VideoInfo) {}
 
   static async open(file: Blob | Source): Promise<Video> {
+    if (typeof VideoDecoder === 'undefined') throw new Error('this browser has no WebCodecs video decoder');
     const input = new Input({ source: file instanceof Blob ? new BlobSource(file) : file, formats: ALL_FORMATS });
     const track = await input.getPrimaryVideoTrack();
     if (!track) throw new Error('the file has no video track');
