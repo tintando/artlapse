@@ -150,6 +150,12 @@
   #helpOpen { padding:3px 10px; font-size:12.5px; white-space:nowrap; }
   #theme { width:28px; height:28px; padding:0; display:grid; place-items:center; flex:none; color:var(--heading); }
   #theme svg { width:15px; height:15px; fill:none; stroke:currentColor; stroke-width:2; stroke-linecap:round; stroke-linejoin:round; }
+  /* the source on GitHub: a link that looks like the theme's button */
+  #repo { width:28px; height:28px; display:grid; place-items:center; flex:none; border-radius:999px; color:var(--heading);
+          background:var(--raised); border:1px solid var(--line); }
+  #repo:hover { border-color:var(--strong); background:var(--hover); }
+  #repo svg { width:15px; height:15px; fill:currentColor; }
+  #slow .card { max-width:460px; }
   /* the recording, and the setup as a file */
   #file .name { font-size:12.5px; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; margin-bottom:6px; }
   #file .name b { font-weight:700; }
@@ -200,6 +206,23 @@
   #tour h3 { margin:0 0 4px; font-size:15px; color:var(--heading); }
   #tour p { margin:0 0 12px; font-size:13px; }
   #tour button.primary { width:auto; padding:6px 16px; }
+  /* a narrow screen (a phone): the video above, the sidebar under it, the page scrolling; boxes are drawn
+     on the video only, so a swipe beside it scrolls */
+  @media (max-width:760px) {
+    body { flex-direction:column; height:auto; min-height:100vh; }
+    main { flex:none; padding:8px; touch-action:auto; }
+    body.empty main { min-height:70vh; }
+    #stage { padding:0; touch-action:none; }
+    video { max-height:60vh; }
+    #time { min-width:0; }
+    #range { padding-left:0; }
+    aside { width:auto; border-left:none; border-top:1px solid var(--line); overflow:visible; }
+    .modal { padding:10px; }
+    .modal .card { padding:20px 16px; }
+    #tour .card { width:min(300px, calc(100vw - 32px)); }
+  }
+  /* no keyboard shortcuts to show on a touch screen */
+  @media (hover:none) { #keys { display:none; } }
 </style>
 </head>
 <body>
@@ -234,7 +257,7 @@
   </div>
 </main>
 <aside>
-  <header><h1>Artlapse setup</h1><span id="status"></span><button id="theme"></button><button id="helpOpen">How it works</button></header>
+  <header><h1>Artlapse setup</h1><span id="status"></span><button id="theme"></button><a id="repo" href="https://github.com/tintando/artlapse" target="_blank" rel="noopener" title="the source on GitHub" aria-label="the source on GitHub"><svg viewBox="0 0 16 16" aria-hidden="true"><path d="M8 0C3.58 0 0 3.58 0 8c0 3.54 2.29 6.53 5.47 7.59.4.07.55-.17.55-.38 0-.19-.01-.82-.01-1.49-2.01.37-2.53-.49-2.69-.94-.09-.23-.48-.94-.82-1.13-.28-.15-.68-.52-.01-.53.63-.01 1.08.58 1.23.82.72 1.21 1.87.87 2.33.66.07-.52.28-.87.51-1.07-1.78-.2-3.64-.89-3.64-3.95 0-.87.31-1.59.82-2.15-.08-.2-.36-1.02.08-2.12 0 0 .67-.21 2.2.82.64-.18 1.32-.27 2-.27.68 0 1.36.09 2 .27 1.53-1.04 2.2-.82 2.2-.82.44 1.1.16 1.92.08 2.12.51.56.82 1.27.82 2.15 0 3.07-1.87 3.75-3.65 3.95.29.25.54.73.54 1.48 0 1.07-.01 1.93-.01 2.2 0 .21.15.46.55.38A8.013 8.013 0 0016 8c0-4.42-3.58-8-8-8z"/></svg></a><button id="helpOpen">How it works</button></header>
   <div id="file">
     <div class="name" id="videoName"></div>
     <div class="files"><button id="loadVideo" title="choose the recording">Load video…</button>
@@ -330,6 +353,13 @@
         <kbd>,</kbd><kbd>.</kbd> one frame</p></div>
   </div>
   <div class="row"><button id="tourAgain">Show me around the page</button><button id="helpDone" style="margin-left:auto">Close</button></div>
+</div></div>
+<div id="slow" class="modal" hidden><div class="card" role="dialog" aria-labelledby="slowTitle">
+  <h1 id="slowTitle">This may be very slow here</h1>
+  <p class="lead">Artlapse does all its work in this browser, on this device's graphics card. On a phone or tablet that
+    can be very slow, and the browser may stop the work when you switch to another app or lock the screen.
+    A computer with Chrome or Edge does it much faster.</p>
+  <div class="row" style="margin-top:16px"><button id="slowOk" class="primary" style="width:auto; margin-left:auto">Try it anyway</button></div>
 </div></div>
 <div id="tour" hidden>
   <div class="spot"></div>
@@ -604,6 +634,8 @@ mainEl.addEventListener('pointermove', ev => {
   if (drag.mode !== 'draw') setRect(sel, dragged(drag, p));
   render();
 });
+// a touch the browser takes over to scroll: no box
+mainEl.addEventListener('pointercancel', () => { drag = null; render(); });
 mainEl.addEventListener('pointerup', () => {
   if (!drag) return;
   const d = drag; drag = null;
@@ -647,7 +679,7 @@ function renderTimeline() {
   q('[data-handle=start]').style.left = pct(state.start);
   q('[data-handle=end]').style.left = pct(end);
   q('.tick').hidden = !state.reference.target; q('.tick').style.left = pct(state.reference.time);
-  q('.head').style.left = pct(video.currentTime);
+  q('.head').style.left = pct(clamp(video.currentTime, 0, D));  // inside the timeline before the duration is known
   // the cuts, and the one being made (from where it was begun to the playhead)
   const cuts = q('.cuts'), now = video.currentTime;
   const shown = [...state.cuts, ...(cutFrom != null ? [[Math.min(cutFrom, now), Math.max(cutFrom, now)]] : [])];
@@ -1042,6 +1074,13 @@ window.addEventListener('keydown', ev => {
   else if ((ev.key === 'Delete' || ev.key === 'Backspace') && sel != null) remove(sel);
   else if (ev.key === 'Escape') select(null);
 });
+
+// On a touch screen (a phone or tablet), the first visit starts with a warning that it may be very slow.
+const slow = document.getElementById('slow'), WARNED = 'artlapse.warnedSlow';
+const closeSlow = () => { slow.hidden = true; try { localStorage.setItem(WARNED, '1'); } catch (e) { /* shown again next time */ } };
+document.getElementById('slowOk').onclick = closeSlow;
+slow.onclick = ev => { if (ev.target === slow) closeSlow(); };
+try { if (matchMedia('(pointer: coarse)').matches && localStorage.getItem(WARNED) !== '1') slow.hidden = false; } catch (e) {}
 
 load().catch(e => status('Could not load the setup: ' + e.message, true));
 </script>

@@ -211,6 +211,23 @@
   #tour h3 { margin:0 0 4px; font-size:15px; color:var(--heading); }
   #tour p { margin:0 0 12px; font-size:13px; }
   #tour button.primary { width:auto; padding:6px 16px; }
+  /* a narrow screen (a phone): the video above, the sidebar under it, the page scrolling; boxes are drawn
+     on the video only, so a swipe beside it scrolls */
+  @media (max-width:760px) {
+    body { flex-direction:column; height:auto; min-height:100vh; }
+    main { flex:none; padding:8px; touch-action:auto; }
+    body.empty main { min-height:70vh; }
+    #stage { padding:0; touch-action:none; }
+    video { max-height:60vh; }
+    #time { min-width:0; }
+    #range { padding-left:0; }
+    aside { width:auto; border-left:none; border-top:1px solid var(--line); overflow:visible; }
+    .modal { padding:10px; }
+    .modal .card { padding:20px 16px; }
+    #tour .card { width:min(300px, calc(100vw - 32px)); }
+  }
+  /* no keyboard shortcuts to show on a touch screen */
+  @media (hover:none) { #keys { display:none; } }
 </style>
 </head>
 <body>
@@ -620,6 +637,8 @@ mainEl.addEventListener('pointermove', ev => {
   if (drag.mode !== 'draw') setRect(sel, dragged(drag, p));
   render();
 });
+// a touch the browser takes over to scroll: no box
+mainEl.addEventListener('pointercancel', () => { drag = null; render(); });
 mainEl.addEventListener('pointerup', () => {
   if (!drag) return;
   const d = drag; drag = null;
@@ -663,7 +682,7 @@ function renderTimeline() {
   q('[data-handle=start]').style.left = pct(state.start);
   q('[data-handle=end]').style.left = pct(end);
   q('.tick').hidden = !state.reference.target; q('.tick').style.left = pct(state.reference.time);
-  q('.head').style.left = pct(video.currentTime);
+  q('.head').style.left = pct(clamp(video.currentTime, 0, D));  // inside the timeline before the duration is known
   // the cuts, and the one being made (from where it was begun to the playhead)
   const cuts = q('.cuts'), now = video.currentTime;
   const shown = [...state.cuts, ...(cutFrom != null ? [[Math.min(cutFrom, now), Math.max(cutFrom, now)]] : [])];
