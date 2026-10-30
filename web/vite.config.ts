@@ -31,10 +31,14 @@ function testRoutes(): Plugin {
   };
 }
 
+const ISOLATION = { 'Cross-Origin-Opener-Policy': 'same-origin', 'Cross-Origin-Embedder-Policy': 'require-corp' };
+
 export default defineConfig({
   plugins: [testRoutes()],
   worker: { format: 'es' },
-  // the test server (ARTLAPSE_TEST_OUT set) never reloads a page mid-run when a file changes
-  server: { hmr: !process.env.ARTLAPSE_TEST_OUT },
+  // the test server (ARTLAPSE_TEST_OUT set) never reloads a page mid-run when a file changes; both servers
+  // isolate the page as public/_headers does on the site
+  server: { hmr: !process.env.ARTLAPSE_TEST_OUT, headers: ISOLATION },
+  preview: { headers: ISOLATION },
   build: { target: 'es2022' },
 });

@@ -12,9 +12,9 @@ import { Gpu, groups } from './gpu';
 import { erode, pyRound } from './imgops';
 import { gaussKernel } from './sift';
 
-const MARGIN = 8; // canvas px of context around the updated box
-const INK_SIGMA = 2.0;
-const INK_GROW = 1.0;
+export const MARGIN = 8; // canvas px of context around the updated box
+export const INK_SIGMA = 2.0;
+export const INK_GROW = 1.0;
 const WG = 256;
 
 const PACK = /* wgsl */ `
@@ -303,7 +303,7 @@ const SHOW = /* wgsl */ `
 `;
 
 export interface FrameResult { changed: number; processed: number }
-type Box = [number, number, number, number];
+export type Box = [number, number, number, number];
 
 /** The valid screen region: the screen mask shrunk by `erodePx` (the image edge does not shrink it). */
 export function validMask(mask: Uint8Array, w: number, h: number, erodePx: number): Uint8Array {
@@ -318,8 +318,48 @@ export function validMask(mask: Uint8Array, w: number, h: number, erodePx: numbe
   return out;
 }
 
-export class GpuCanvas {
+/** What the GPU canvas and the processor's (composite-cpu.ts) share: the settings, and which part of the
+ * canvas a frame can reach. */
+export abstract class Canvas {
   readonly stable: number;
+  protected cfg: Config['accumulate'];
+  private validBox: [number, number, number, number] | null; // bounding box of valid[::8, ::8], x0 y0 x1 y1
+
+  constructor(readonly size: [number, number], cfg: Config, readonly sw: number, readonly sh: number, valid: Uint8Array) {
+    this.cfg = cfg.accumulate;
+    this.stable = Math.min(Math.max(pyRound(cfg.accumulate.stable_seconds * cfg.sample_fps), 1), 255);
+    let x0 = Infinity, y0 = Infinity, x1 = -1, y1 = -1;
+    for (let y = 0; y < sh; y += 8) for (let x = 0; x < sw; x += 8) {
+      if (valid[y * sw + x]) { x0 = Math.min(x0, x); x1 = Math.max(x1, x); y0 = Math.min(y0, y); y1 = Math.max(y1, y); }
+    }
+    this.validBox = x1 < 0 ? null : [x0, y0, x1, y1];
+  }
+
+  private clip(pts: [number, number][], pad: number): Box | null {
+    const [w, h] = this.size;
+    const xs = pts.map(p => p[0]), ys = pts.map(p => p[1]);
+    const x0 = Math.max(Math.floor(Math.min(...xs) - pad), 0), y0 = Math.max(Math.floor(Math.min(...ys) - pad), 0);
+    const x1 = Math.min(Math.ceil(Math.max(...xs) + pad), w), y1 = Math.min(Math.ceil(Math.max(...ys) + pad), h);
+    return x1 > x0 && y1 > y0 ? [x0, y0, x1, y1] : null;
+  }
+
+  /** Canvas bounding box of the valid screen region under `m`. */
+  visibleBox(m: M3): Box | null {
+    if (!this.validBox) return null;
+    const [x0, y0, x1, y1] = this.validBox;
+    const pts = [[x0, y0], [x1, y0], [x0, y1], [x1, y1]].map(([x, y]) => geo.apply(m, x, y));
+    return this.clip(pts, 8 * geo.similarity(m).scale + 8);
+  }
+
+  /** Merge a frame; `m` maps screen -> canvas. */
+  abstract add(frame: VideoFrame, m: M3): Promise<FrameResult>;
+  /** The canvas as an ImageBitmap. */
+  abstract image(): ImageBitmap;
+  /** The canvas as RGBA bytes. */
+  abstract pixels(): Promise<Uint8ClampedArray>;
+}
+
+export class GpuCanvas extends Canvas {
   private color: GPUBuffer;
   private quality: GPUBuffer;
   private pending: GPUBuffer;
@@ -339,15 +379,11 @@ export class GpuCanvas {
   private res: GPUBuffer;
   private pool: GPUBuffer[] = [];
   private used = 0;
-  private validBox: [number, number, number, number] | null; // bounding box of valid[::8, ::8], x0 y0 x1 y1
-  private cfg: Config['accumulate'];
 
-  constructor(private gpu: Gpu, readonly size: [number, number], cfg: Config, readonly sw: number, readonly sh: number,
-    valid: Uint8Array) {
+  constructor(private gpu: Gpu, size: [number, number], cfg: Config, sw: number, sh: number, valid: Uint8Array) {
+    super(size, cfg, sw, sh, valid);
     const [w, h] = size;
     const n = w * h;
-    this.cfg = cfg.accumulate;
-    this.stable = Math.min(Math.max(pyRound(cfg.accumulate.stable_seconds * cfg.sample_fps), 1), 255);
     this.color = gpu.buffer(n * 4);
     const [bb, bg, br] = cfg.canvas.background;
     gpu.device.queue.writeBuffer(this.color, 0, new Uint32Array(n).fill(br | (bg << 8) | (bb << 16) | (255 << 24)));
@@ -363,11 +399,6 @@ export class GpuCanvas {
     this.ta = gpu.buffer(n * 16);
     this.tb = gpu.buffer(n * 16);
     this.res = gpu.buffer(8);
-    let x0 = Infinity, y0 = Infinity, x1 = -1, y1 = -1;
-    for (let y = 0; y < sh; y += 8) for (let x = 0; x < sw; x += 8) {
-      if (valid[y * sw + x]) { x0 = Math.min(x0, x); x1 = Math.max(x1, x); y0 = Math.min(y0, y); y1 = Math.max(y1, y); }
-    }
-    this.validBox = x1 < 0 ? null : [x0, y0, x1, y1];
   }
 
   /** A storage or uniform buffer from this frame's pool, holding `data`. */
@@ -405,23 +436,6 @@ export class GpuCanvas {
     this.run(enc, BLUR2, 'along_x', [this.u(w, h, dstride, dx0, dy0, half, 0, 0), k, this.tmp, dst], w * h);
   }
 
-  private clip(pts: [number, number][], pad: number): Box | null {
-    const [w, h] = this.size;
-    const xs = pts.map(p => p[0]), ys = pts.map(p => p[1]);
-    const x0 = Math.max(Math.floor(Math.min(...xs) - pad), 0), y0 = Math.max(Math.floor(Math.min(...ys) - pad), 0);
-    const x1 = Math.min(Math.ceil(Math.max(...xs) + pad), w), y1 = Math.min(Math.ceil(Math.max(...ys) + pad), h);
-    return x1 > x0 && y1 > y0 ? [x0, y0, x1, y1] : null;
-  }
-
-  /** Canvas bounding box of the valid screen region under `m`. */
-  visibleBox(m: M3): Box | null {
-    if (!this.validBox) return null;
-    const [x0, y0, x1, y1] = this.validBox;
-    const pts = [[x0, y0], [x1, y0], [x0, y1], [x1, y1]].map(([x, y]) => geo.apply(m, x, y));
-    return this.clip(pts, 8 * geo.similarity(m).scale + 8);
-  }
-
-  /** Merge a frame; `m` maps screen -> canvas. */
   async add(frame: VideoFrame, m: M3): Promise<FrameResult> {
     const box = this.visibleBox(m);
     if (!box) return { changed: 0, processed: 0 };
@@ -485,7 +499,7 @@ export class GpuCanvas {
 
   private show?: { canvas: OffscreenCanvas; ctx: GPUCanvasContext; pipe: GPURenderPipeline; bind: GPUBindGroup };
 
-  /** The canvas as an ImageBitmap (drawn on the GPU into an OffscreenCanvas). */
+  /** Drawn on the GPU into an OffscreenCanvas. */
   image(): ImageBitmap {
     const g = this.gpu;
     if (!this.show) {
@@ -510,7 +524,6 @@ export class GpuCanvas {
     return canvas.transferToImageBitmap();
   }
 
-  /** The canvas as RGBA bytes. */
   async pixels(): Promise<Uint8ClampedArray> {
     const [w, h] = this.size;
     const [raw] = await this.gpu.read(this.gpu.device.createCommandEncoder(), [[this.color, 0, w * h * 4]]);
@@ -524,7 +537,7 @@ export class Compositor {
   private prev: M3 | null = null;
   full = 0;
 
-  constructor(readonly canvas: GpuCanvas) {}
+  constructor(readonly canvas: Canvas) {}
 
   async add(frame: VideoFrame, m: M3): Promise<FrameResult> {
     if (this.prev) {

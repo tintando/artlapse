@@ -34,4 +34,4 @@ Render picks frames from `canvas.mp4` paced by painting activity, mixed with str
 
 ## In the browser
 
-The website runs the same three stages in the browser: SIFT, matching and the canvas are WebGPU compute shaders, and the browser's WebCodecs decode the recording and encode the timelapse. Its register agrees with this one on 98% of the samples of the vod test stream. [web/README.md](../web/README.md) has how it is built and how it compares.
+The website runs the same three stages in the browser: SIFT, matching and the canvas are WebGPU compute shaders, and the browser's WebCodecs decode the recording and encode the timelapse. Where WebGPU gives no device, the same passes run on the processor instead, each shared out by rows across one worker per core. Its register agrees with this one on 98% of the samples of the vod test stream. [web/README.md](../web/README.md) has how it is built and how it compares.

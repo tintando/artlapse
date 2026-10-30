@@ -6,11 +6,11 @@ export class Gpu {
   private constructor(readonly device: GPUDevice, readonly adapter: GPUAdapter) {}
 
   static async create(): Promise<Gpu> {
-    if (!navigator.gpu) throw new Error('This browser has no WebGPU (use a recent Chrome, Edge or Safari)');
+    if (!navigator.gpu) throw new Error('this browser has no WebGPU');
     // headless Chrome on Linux sometimes returns no adapter to the first request of a page
     const adapter = await navigator.gpu.requestAdapter({ powerPreference: 'high-performance' })
       ?? await navigator.gpu.requestAdapter({ powerPreference: 'high-performance' });
-    if (!adapter) throw new Error('WebGPU found no graphics adapter');
+    if (!adapter) throw new Error('WebGPU found no graphics card it can use');
     const want = ['shader-f16'].filter(f => adapter.features.has(f)) as GPUFeatureName[];
     const device = await adapter.requestDevice({
       requiredFeatures: want,

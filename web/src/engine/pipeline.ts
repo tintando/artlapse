@@ -1,17 +1,22 @@
 /**
  * The stages, as artlapse's pipeline.py runs them: register (the track), composite (canvas.mp4, its
  * snapshot index and the final canvas) and render (timelapse.mp4). Files are kept in the browser's
- * origin-private file system when it has one, else in memory.
+ * origin-private file system when it has one, else in memory. Without a GPU (`gpu` null) register and
+ * composite run on the processor, shared across a team of workers (team.ts; sift-cpu.ts, cpu.ts,
+ * composite-cpu.ts).
  */
 import { BlobSource, BufferTarget, Input, ALL_FORMATS, Mp4OutputFormat, Output, Quality, StreamTarget, VideoSample, VideoSampleSink, VideoSampleSource } from 'mediabunny';
 import { Compositor, GpuCanvas, validMask } from './composite';
+import { CpuCanvas } from './composite-cpu';
 import { Config } from './config';
-import { Grayer, Video, grayFrames } from './frames';
+import { CpuMatcher } from './cpu';
+import { CpuGrayer, Grayer, Video, grayFrames } from './frames';
 import { Gpu } from './gpu';
 import { pyRound } from './imgops';
 import { Matcher } from './match';
 import { Decision, Status, Track, keptSamples, referenceTransform, register, sampleRange, screenMask } from './register';
 import { Sift } from './sift';
+import { SiftCpu } from './sift-cpu';
 
 export type Stage = 'register' | 'composite' | 'render';
 export interface Progress { stage: Stage; done: number; total: number; detail: string }
@@ -52,14 +57,14 @@ export async function clearFiles(): Promise<void> {
   } catch { /* nothing kept there */ }
 }
 
-export async function runRegister(cfg: Config, video: Video, gpu: Gpu, report: Report, stop: () => boolean,
+export async function runRegister(cfg: Config, video: Video, gpu: Gpu | null, report: Report, stop: () => boolean,
   decisions?: (n: number, d: Decision & { status: string }) => void): Promise<Track> {
   const { width, height } = video.info;
   const aw = cfg.register.analysis_width, ah = pyRound((height * aw) / width / 2) * 2;
-  const sift = new Sift(gpu, aw, ah, cfg.register.max_features);
-  const grayer = new Grayer(gpu, aw, ah);
+  const sift = gpu ? new Sift(gpu, aw, ah, cfg.register.max_features) : new SiftCpu(aw, ah, cfg.register.max_features);
+  const grayer = gpu ? new Grayer(gpu, aw, ah) : new CpuGrayer(aw, ah);
   const counts = [0, 0, 0, 0];
-  return register(cfg, video.count(cfg.sample_fps), width, height, sift, new Matcher(gpu),
+  return register(cfg, video.count(cfg.sample_fps), width, height, sift, gpu ? new Matcher(gpu) : new CpuMatcher(),
     idx => grayFrames(video, grayer, idx, cfg.sample_fps),
     p => {
       counts[p.status]++;
@@ -69,11 +74,11 @@ export async function runRegister(cfg: Config, video: Video, gpu: Gpu, report: R
 
 export interface Composite { canvas: Blob; snapshots: Snapshots; final: Blob; size: [number, number] }
 
-export async function runComposite(cfg: Config, track: Track, video: Video, gpu: Gpu, report: Report, stop: () => boolean): Promise<Composite> {
+export async function runComposite(cfg: Config, track: Track, video: Video, gpu: Gpu | null, report: Report, stop: () => boolean): Promise<Composite> {
   const { width, height } = video.info;
   const [, size] = referenceTransform(cfg);
   const valid = validMask(screenMask(cfg, width, height, 1.0), width, height, cfg.accumulate.erode_px);
-  const canvas = new GpuCanvas(gpu, size, cfg, width, height, valid);
+  const canvas = gpu ? new GpuCanvas(gpu, size, cfg, width, height, valid) : new CpuCanvas(size, cfg, width, height, valid);
   const comp = new Compositor(canvas);
   const [lo, hi] = sampleRange(cfg, video.count(cfg.sample_fps));
   const placed: number[] = [];

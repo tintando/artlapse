@@ -8,6 +8,7 @@
  */
 import { ALL_FORMATS, BlobSource, EncodedPacketSink, Input, InputVideoTrack, Source, VideoSampleSink } from 'mediabunny';
 import { Gpu } from './gpu';
+import { Team, theTeam } from './team';
 
 export interface VideoInfo { width: number; height: number; duration: number; start: number }
 
@@ -112,8 +113,11 @@ fn main(@builtin(global_invocation_id) g: vec3u) {
 }
 `;
 
+/** What register needs of its analysis frames' maker: Grayer on the GPU, or CpuGrayer. */
+export interface Gray { gray(frame: VideoFrame): Promise<Uint8Array> }
+
 /** Grey analysis frames on the GPU. */
-export class Grayer {
+export class Grayer implements Gray {
   private out: GPUBuffer;
   private params: GPUBuffer;
 
@@ -138,8 +142,50 @@ export class Grayer {
   }
 }
 
+/** A frame's pixels as RGBA bytes, through a 2D canvas kept between frames (the processor fallback's way in). */
+export class FramePixels {
+  private ctx: OffscreenCanvasRenderingContext2D | null = null;
+
+  rgba(frame: VideoFrame): Uint8ClampedArray {
+    const w = frame.displayWidth, h = frame.displayHeight;
+    if (!this.ctx || this.ctx.canvas.width !== w || this.ctx.canvas.height !== h) {
+      this.ctx = new OffscreenCanvas(w, h).getContext('2d', { willReadFrequently: true })!;
+    }
+    this.ctx.drawImage(frame, 0, 0, w, h);
+    return this.ctx.getImageData(0, 0, w, h).data;
+  }
+}
+
+/** Grey analysis frames on the processor: Grayer's shrinking by area and luma, one axis at a time, shared
+ * across the team's workers. Calls run one after the other: they share their buffers. */
+export class CpuGrayer implements Gray {
+  private px = new FramePixels();
+  private buf: { sw: number; sh: number; rgba: Uint8ClampedArray; rows: Float32Array; out: Uint8Array } | null = null;
+  private queue: Promise<unknown> = Promise.resolve();
+
+  constructor(readonly w: number, readonly h: number, private team: Team = theTeam()) {}
+
+  gray(frame: VideoFrame): Promise<Uint8Array> {
+    const next = this.queue.then(() => this.make(frame));
+    this.queue = next.catch(() => {});
+    return next;
+  }
+
+  private async make(frame: VideoFrame): Promise<Uint8Array> {
+    const { w, h, team } = this, sw = frame.displayWidth, sh = frame.displayHeight;
+    if (!this.buf || this.buf.sw !== sw || this.buf.sh !== sh) {
+      this.buf = { sw, sh, rgba: team.alloc(Uint8ClampedArray, sw * sh * 4), rows: team.alloc(Float32Array, w * sh), out: team.alloc(Uint8Array, w * h) };
+    }
+    const { rgba, rows, out } = this.buf;
+    rgba.set(this.px.rgba(frame));
+    await team.run('grayH', { rgba, sw, w, k: luma(frame), rows }, sh, sw * sh);
+    await team.run('grayV', { rows, sw, sh, w, h, out }, h, w * sh);
+    return out.slice();
+  }
+}
+
 /** Analysis frames for sorted sample indices, decoding and converting a few ahead of the consumer. */
-export async function* grayFrames(video: Video, grayer: Grayer, indices: number[], fps: number, depth = 4): AsyncGenerator<[number, Uint8Array]> {
+export async function* grayFrames(video: Video, grayer: Gray, indices: number[], fps: number, depth = 4): AsyncGenerator<[number, Uint8Array]> {
   const pending: Promise<[number, Uint8Array]>[] = [];
   for await (const [n, frame] of video.frames(indices, fps)) {
     pending.push(grayer.gray(frame).then(g => { frame.close(); return [n, g] as [number, Uint8Array]; }));

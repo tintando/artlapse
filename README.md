@@ -26,11 +26,11 @@ Artlapse finds the canvas in every frame and rebuilds it as one steady picture. 
 - **Skips what isn't the canvas**: break scenes, references, other documents and other programs are noticed and left out, so you don't have to edit the recording first.
 - **Keeps the detail of your close-ups**: the painting is rebuilt at up to 2048 pixels on its long side, sharper than the stream ever showed the whole canvas, because the details come from the moments you zoomed in on them.
 - **Paces the timelapse by painting**: busy stretches get more of it than quiet ones, and it ends holding on the finished piece. You choose the length, from 15 seconds to 5 minutes.
-- **Stays on your computer**: the website does all the work in your browser, on your graphics card. The recording is read where it is and never uploaded.
+- **Stays on your computer**: the website does all the work in your browser, on your graphics card (or, where the browser can't use it, on the processor). The recording is read where it is and never uploaded.
 
 ## Make your timelapse
 
-You need the recording of the stream (an OBS recording, or a VOD) and a desktop browser with WebGPU (eg. Chrome, Edge) (Linux can require additional setup for WebGPU)
+You need the recording of the stream (an OBS recording, or a VOD) and a recent browser. Chrome or Edge on a computer work best: they use the graphics card through WebGPU (on Linux that can need setup). Without WebGPU the website makes the timelapse on the processor instead, and says so: it comes out the same but takes about four times as long on a fast desktop, and longer on a slower one.
 
 1. Open [artlapse.tintan.do](https://artlapse.tintan.do) and press **Load video**.
 2. Draw three kinds of box on the video (see below). A short tour shows you around the first time, and **How it works** explains each box with an example.
@@ -55,7 +55,7 @@ The page tells you, at the top of the sidebar, about anything that would spoil t
 
 ## How long it takes
 
-The time grows with the length of the stream. A 36-minute stream took 7 minutes on the website, on a desktop with an NVIDIA RTX 3080. A six-hour stream took 32 minutes with the version you run yourself (below), on the same computer. A slower graphics card takes longer.
+The time grows with the length of the stream. A 36-minute stream took 7 minutes on the website, on a desktop with an NVIDIA RTX 3080. A six-hour stream took 32 minutes with the version you run yourself (below), on the same computer. A slower graphics card takes longer. Without the graphics card, on the processor, the first five minutes of the same stream took 4 minutes instead of 1, on a 10-core Intel i5-13400F.
 
 Made again after a change, it redoes only what the change affects: a new length only remakes the video, which takes under a minute.
 

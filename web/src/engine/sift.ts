@@ -15,14 +15,14 @@
  */
 import { Gpu } from './gpu';
 
-const LAYERS = 3; // nOctaveLayers
-const PER_OCTAVE = LAYERS + 3;
-const SIGMA = 1.6;
-const CONTRAST = 0.04;
-const EDGE = 10;
-const BORDER = 5; // SIFT_IMG_BORDER
+export const LAYERS = 3; // nOctaveLayers
+export const PER_OCTAVE = LAYERS + 3;
+export const SIGMA = 1.6;
+export const CONTRAST = 0.04;
+export const EDGE = 10;
+export const BORDER = 5; // SIFT_IMG_BORDER
 const MAX_OCTAVES = 10;
-const CAP = 32768; // candidates and keypoints per image
+export const CAP = 32768; // candidates and keypoints per image
 const ORI_FIX = 1024; // fixed-point scale of the orientation histogram
 const DESC_FIX = 4096; // ... and of the descriptor histogram
 
@@ -386,11 +386,97 @@ fn main(@builtin(workgroup_id) wg: vec3u, @builtin(local_invocation_index) li: u
 `;
 
 /** One octave's size and its Gaussian images' offsets in the pyramid buffer (in floats). */
-interface Octave { w: number; h: number; off: number[] }
+export interface Octave { w: number; h: number; off: number[] }
 
 export interface Features {
   pts: Float32Array; // (N, 2) keypoint positions in analysis pixels (mirrored image for a flipped state)
   desc: Uint8Array; // (N, 128)
+}
+
+/** What register needs of SIFT: this GPU one, or SiftCpu's pool (sift-cpu.ts). */
+export interface Detector {
+  /** Keypoints and descriptors of a grey analysis frame (w x h bytes) in each flip state; `masks[i]` (255
+   * where features may be kept) is in that state's coordinates, mirrored for a flipped state. */
+  detect(gray: Uint8Array, flips: boolean[], masks: Uint8Array[]): Promise<Features[]>;
+}
+
+/** The octaves of the doubled w x h image, each with its Gaussian images' offsets in one buffer, and
+ * that buffer's length (in floats). */
+export function octaves(w: number, h: number): [Octave[], number] {
+  const W = 2 * w, H = 2 * h;
+  const n = Math.min(MAX_OCTAVES, Math.round(Math.log2(Math.min(W, H)) - 2) + 1);
+  const out: Octave[] = [];
+  let off = 0, ow = W, oh = H;
+  for (let o = 0; o < n && ow > 2 * BORDER && oh > 2 * BORDER; o++) {
+    const offs = [];
+    for (let l = 0; l < PER_OCTAVE; l++) { offs.push(off); off += ow * oh; }
+    out.push({ w: ow, h: oh, off: offs });
+    ow = Math.floor(ow / 2);
+    oh = Math.floor(oh / 2);
+  }
+  return [out, off];
+}
+
+/** The blur from each level of an octave to the next (buildGaussianPyramid); [0] is the base's sigma. */
+export function levelSigmas(): number[] {
+  const sig = [SIGMA];
+  const k = 2 ** (1 / LAYERS);
+  for (let i = 1; i < PER_OCTAVE; i++) {
+    const prev = k ** (i - 1) * SIGMA, total = prev * k;
+    sig.push(Math.sqrt(total * total - prev * prev));
+  }
+  return sig;
+}
+
+/** The blur that takes the doubled image to the pyramid's base. */
+export const BASE_SIGMA = Math.sqrt(Math.max(SIGMA * SIGMA - 0.25 * 4, 0.01));
+
+/** The DoG threshold extrema are first tested against. */
+export const THRESHOLD = Math.floor(0.5 * CONTRAST / LAYERS * 255);
+
+/**
+ * removeDuplicatedSorted, retainBest(maxFeatures), the firstOctave = -1 rescaling and the mask, on `n`
+ * oriented keypoints (Kp records of 8 words: x, y, response, size, angle, octave | layer << 8); returns
+ * their positions and the descriptor stage's input (8 words each: x, y, angle, scale, octave | layer << 8).
+ */
+export function selectKeypoints(n: number, list: ArrayBuffer, mask: Uint8Array, w: number, h: number, maxFeatures: number) {
+  const f = new Float32Array(list), u = new Uint32Array(list);
+  let idx = Array.from({ length: n }, (_, i) => i);
+  // x, y, size, angle, response
+  const key = (i: number, j: number) => f[i * 8 + j];
+  idx.sort((a, b) => key(a, 0) - key(b, 0) || key(a, 1) - key(b, 1) || key(a, 3) - key(b, 3) || key(a, 4) - key(b, 4) || key(b, 2) - key(a, 2));
+  idx = idx.filter((a, i) => {
+    if (!i) return true;
+    const b = idx[i - 1];
+    return !(key(a, 0) === key(b, 0) && key(a, 1) === key(b, 1) && key(a, 3) === key(b, 3) && key(a, 4) === key(b, 4));
+  });
+  if (maxFeatures > 0 && idx.length > maxFeatures) {
+    const resp = idx.map(i => key(i, 2)).sort((a, b) => b - a);
+    const cut = resp[maxFeatures - 1];
+    idx = idx.filter(i => key(i, 2) >= cut);
+  }
+  const pts: number[] = [];
+  const input: number[] = [];
+  for (const i of idx) {
+    const olay = u[i * 8 + 5], o = olay & 255;
+    // kpt.pt = (c + xc) * 2^o, then halved for the doubled image
+    const x = Math.fround(Math.fround(key(i, 0) * (1 << o)) * 0.5), y = Math.fround(Math.fround(key(i, 1) * (1 << o)) * 0.5);
+    const mx = Math.floor(x + 0.5), my = Math.floor(y + 0.5);
+    if (mx < 0 || my < 0 || mx >= w || my >= h || !mask[my * w + mx]) continue;
+    const size = Math.fround(key(i, 3) * 0.5);
+    const scale = o >= 1 ? 1 / (1 << (o - 1)) : 2; // unpackOctave of octave o - 1
+    let angle = 360 - key(i, 4);
+    if (Math.abs(angle - 360) < 1.1920929e-7) angle = 0;
+    pts.push(x, y);
+    input.push(x * scale, y * scale, angle, size * scale * 0.5, olay, 0, 0, 0);
+  }
+  const buf = new ArrayBuffer(input.length * 4);
+  const fb = new Float32Array(buf), ub = new Uint32Array(buf);
+  for (let i = 0; i < input.length; i += 8) {
+    fb.set(input.slice(i, i + 4), i);
+    ub[i + 4] = input[i + 4];
+  }
+  return { n: pts.length / 2, pts: new Float32Array(pts), input: buf };
 }
 
 /** cv::getGaussianKernel for a float image (ksize from sigma as cv::GaussianBlur picks it). */
@@ -420,8 +506,8 @@ interface State {
   descCap: number;
 }
 
-export class Sift {
-  readonly octaves: Octave[] = [];
+export class Sift implements Detector {
+  readonly octaves: Octave[];
   private img: GPUBuffer;
   private tmp: GPUBuffer;
   private tmp2: GPUBuffer;
@@ -434,15 +520,8 @@ export class Sift {
 
   constructor(private gpu: Gpu, readonly w: number, readonly h: number, readonly maxFeatures: number) {
     const W = 2 * w, H = 2 * h;
-    const n = Math.min(MAX_OCTAVES, Math.round(Math.log2(Math.min(W, H)) - 2) + 1);
-    let off = 0, ow = W, oh = H;
-    for (let o = 0; o < n && ow > 2 * BORDER && oh > 2 * BORDER; o++) {
-      const offs = [];
-      for (let l = 0; l < PER_OCTAVE; l++) { offs.push(off); off += ow * oh; }
-      this.octaves.push({ w: ow, h: oh, off: offs });
-      ow = Math.floor(ow / 2);
-      oh = Math.floor(oh / 2);
-    }
+    const [octs, off] = octaves(w, h);
+    this.octaves = octs;
     const lv = new Uint32Array(MAX_OCTAVES * PER_OCTAVE * 4);
     this.octaves.forEach((oc, o) => oc.off.forEach((of, l) => lv.set([of, oc.w, oc.h, 0], (o * PER_OCTAVE + l) * 4)));
     this.pyrU = gpu.uniform(lv);
@@ -462,20 +541,12 @@ export class Sift {
         descCap: 0,
       });
     }
-    // per-level blur sigmas (buildGaussianPyramid)
-    const sig = [SIGMA];
-    const k = 2 ** (1 / LAYERS);
-    for (let i = 1; i < PER_OCTAVE; i++) {
-      const prev = k ** (i - 1) * SIGMA, total = prev * k;
-      sig.push(Math.sqrt(total * total - prev * prev));
-    }
-    this.sig = sig;
-    const threshold = Math.floor(0.5 * CONTRAST / LAYERS * 255);
+    this.sig = levelSigmas();
     this.octaves.forEach((oc, o) => {
       this.extremaU.push([0, 1, 2, 3].map(l => {
         const b = new ArrayBuffer(16);
         new Uint32Array(b, 0, 2).set([o, l]);
-        new Float32Array(b, 8, 2).set([threshold, SIGMA]);
+        new Float32Array(b, 8, 2).set([THRESHOLD, SIGMA]);
         return gpu.uniform(b);
       }));
       if (o > 0) {
@@ -513,8 +584,7 @@ export class Sift {
     const g = this.gpu;
     const W = 2 * this.w, H = 2 * this.h;
     g.dispatch(enc, g.pipeline(UPSAMPLE, 'main'), [st.upU, this.img, this.tmp2], Math.ceil(W / 16), Math.ceil(H / 16));
-    const sigDiff = Math.sqrt(Math.max(SIGMA * SIGMA - 0.25 * 4, 0.01));
-    this.blur(enc, this.tmp2, 0, st.pyr, this.octaves[0].off[0], W, H, sigDiff);
+    this.blur(enc, this.tmp2, 0, st.pyr, this.octaves[0].off[0], W, H, BASE_SIGMA);
     this.octaves.forEach((oc, o) => {
       if (o > 0) g.dispatch(enc, g.pipeline(DOWNSAMPLE, 'main'), [this.downU[o - 1], st.pyr], Math.ceil(oc.w / 16), Math.ceil(oc.h / 16));
       for (let l = 1; l < PER_OCTAVE; l++) this.blur(enc, st.pyr, oc.off[l - 1], st.pyr, oc.off[l], oc.w, oc.h, this.sig[l]);
@@ -530,10 +600,6 @@ export class Sift {
     g.dispatchIndirect(enc, g.pipeline(ORIENTATION, 'main'), [this.pyrU, st.pyr, st.cand, st.kps, st.counts], st.args);
   }
 
-  /**
-   * Keypoints and descriptors of a grey analysis frame (w x h bytes) in each flip state; `masks[i]` (255
-   * where features may be kept) is in that state's coordinates, mirrored for a flipped state.
-   */
   async detect(gray: Uint8Array, flips: boolean[], masks: Uint8Array[]): Promise<Features[]> {
     const g = this.gpu, q = g.device.queue;
     q.writeBuffer(this.img, 0, gray.buffer, gray.byteOffset, Math.ceil(gray.byteLength / 4) * 4);
@@ -547,7 +613,7 @@ export class Sift {
     const parts: [GPUBuffer, number, number][] = [];
     for (const st of used) parts.push([st.counts, 0, 16], [st.kps, 0, CAP * 32]);
     const raw = await g.read(enc, parts);
-    const chosen = used.map((_, i) => this.select(raw[2 * i], raw[2 * i + 1], masks[i]));
+    const chosen = used.map((_, i) => selectKeypoints(Math.min(new Uint32Array(raw[2 * i])[1], CAP), raw[2 * i + 1], masks[i], this.w, this.h, this.maxFeatures));
     // descriptors
     const enc2 = g.device.createCommandEncoder();
     used.forEach((st, i) => {
@@ -566,48 +632,5 @@ export class Sift {
     const dparts: [GPUBuffer, number, number][] = used.map((st, i) => [st.desc, 0, chosen[i].n * 128]);
     const draw = await g.read(enc2, dparts);
     return chosen.map((c, i) => ({ pts: c.pts, desc: new Uint8Array(draw[i]) }));
-  }
-
-  /** removeDuplicatedSorted, retainBest(maxFeatures), the firstOctave = -1 rescaling and the mask, on the
-   * oriented keypoints read back; returns their positions and the descriptor shader's input. */
-  private select(counts: ArrayBuffer, list: ArrayBuffer, mask: Uint8Array) {
-    const n = Math.min(new Uint32Array(counts)[1], CAP);
-    const f = new Float32Array(list), u = new Uint32Array(list);
-    let idx = Array.from({ length: n }, (_, i) => i);
-    // x, y, size, angle, response
-    const key = (i: number, j: number) => f[i * 8 + j];
-    idx.sort((a, b) => key(a, 0) - key(b, 0) || key(a, 1) - key(b, 1) || key(a, 3) - key(b, 3) || key(a, 4) - key(b, 4) || key(b, 2) - key(a, 2));
-    idx = idx.filter((a, i) => {
-      if (!i) return true;
-      const b = idx[i - 1];
-      return !(key(a, 0) === key(b, 0) && key(a, 1) === key(b, 1) && key(a, 3) === key(b, 3) && key(a, 4) === key(b, 4));
-    });
-    if (this.maxFeatures > 0 && idx.length > this.maxFeatures) {
-      const resp = idx.map(i => key(i, 2)).sort((a, b) => b - a);
-      const cut = resp[this.maxFeatures - 1];
-      idx = idx.filter(i => key(i, 2) >= cut);
-    }
-    const pts: number[] = [];
-    const input: number[] = [];
-    for (const i of idx) {
-      const olay = u[i * 8 + 5], o = olay & 255;
-      // kpt.pt = (c + xc) * 2^o, then halved for the doubled image
-      const x = Math.fround(Math.fround(key(i, 0) * (1 << o)) * 0.5), y = Math.fround(Math.fround(key(i, 1) * (1 << o)) * 0.5);
-      const mx = Math.floor(x + 0.5), my = Math.floor(y + 0.5);
-      if (mx < 0 || my < 0 || mx >= this.w || my >= this.h || !mask[my * this.w + mx]) continue;
-      const size = Math.fround(key(i, 3) * 0.5);
-      const scale = o >= 1 ? 1 / (1 << (o - 1)) : 2; // unpackOctave of octave o - 1
-      let angle = 360 - key(i, 4);
-      if (Math.abs(angle - 360) < 1.1920929e-7) angle = 0;
-      pts.push(x, y);
-      input.push(x * scale, y * scale, angle, size * scale * 0.5, olay, 0, 0, 0);
-    }
-    const buf = new ArrayBuffer(input.length * 4);
-    const fb = new Float32Array(buf), ub = new Uint32Array(buf);
-    for (let i = 0; i < input.length; i += 8) {
-      fb.set(input.slice(i, i + 4), i);
-      ub[i + 4] = input[i + 4];
-    }
-    return { n: pts.length / 2, pts: new Float32Array(pts), input: buf };
   }
 }

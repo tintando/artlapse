@@ -1,7 +1,8 @@
 // SIFT on an image from disk, in both flip states, saved for test/compare_sift.py:
-// test/sift.html?img=<png path>&out=<name>
+// test/sift.html?img=<png path>&out=<name>[&cpu=1] (cpu: the processor fallback's SIFT, sift-cpu.ts)
 import { Gpu } from '../src/engine/gpu';
-import { Sift } from '../src/engine/sift';
+import { SiftCpu } from '../src/engine/sift-cpu';
+import { Detector, Sift } from '../src/engine/sift';
 
 declare global { interface Window { __done: unknown } }
 
@@ -15,8 +16,8 @@ async function main() {
   const rgba = ctx.getImageData(0, 0, bmp.width, bmp.height).data;
   const gray = new Uint8Array(bmp.width * bmp.height);
   for (let i = 0; i < gray.length; i++) gray[i] = rgba[4 * i];
-  const gpu = await Gpu.create();
-  const sift = new Sift(gpu, bmp.width, bmp.height, +(q.get('n') ?? 1500));
+  const n = +(q.get('n') ?? 1500);
+  const sift: Detector = q.get('cpu') ? new SiftCpu(bmp.width, bmp.height, n) : new Sift(await Gpu.create(), bmp.width, bmp.height, n);
   const mask = new Uint8Array(gray.length).fill(255);
   let feats = await sift.detect(gray, [false, true], [mask, mask]);
   const times = [];

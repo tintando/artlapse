@@ -7,9 +7,9 @@ import { Config } from './config';
 import * as geo from './geometry';
 import { M3 } from './geometry';
 import { boxFilter, erode, hullArea, pyRound, warpLinear, warpNearest } from './imgops';
-import { Matcher } from './match';
+import { Knn } from './match';
 import { estimateSimilarity, rng } from './ransac';
-import { Features, Sift } from './sift';
+import { Detector, Features } from './sift';
 
 export const PATCH = 7;
 const PATCH_CONTRAST = 16.0;
@@ -182,7 +182,7 @@ export class Registrar {
   decision: Decision | null = null;
   random: () => number = rng(0);
 
-  constructor(readonly cfg: Config, fullWidth: number, fullHeight: number, private sift: Sift, private matcher: Matcher) {
+  constructor(readonly cfg: Config, fullWidth: number, fullHeight: number, private sift: Detector, private matcher: Knn) {
     const rc = cfg.register;
     this.r = rc.analysis_width / fullWidth;
     this.aw = rc.analysis_width;
@@ -462,7 +462,7 @@ export interface RegisterProgress { n: number; done: number; total: number; stat
  * Register every sample: backward from the reference frame, then forward. `frames(indices)` yields the
  * analysis frames of sorted sample indices.
  */
-export async function register(cfg: Config, count: number, fullWidth: number, fullHeight: number, sift: Sift, matcher: Matcher,
+export async function register(cfg: Config, count: number, fullWidth: number, fullHeight: number, sift: Detector, matcher: Knn,
   frames: (indices: number[]) => AsyncGenerator<[number, Uint8Array]>,
   progress?: (p: RegisterProgress) => void, decisions?: (n: number, d: Decision & { status: string }) => void,
   stop?: () => boolean): Promise<Track> {

@@ -1,7 +1,8 @@
 /**
  * What artlapse's setup server does for its page, done in the browser: the recording is a file the
  * visitor picks (read where it is, never uploaded), the setup of each recording is kept in this
- * browser's storage, and the timelapse is made by a worker on this computer's GPU.
+ * browser's storage, and the timelapse is made by a worker on this computer's GPU, or on its processor where
+ * the browser gives no GPU (or the page's address ends in ?cpu).
  */
 import { load as loadYaml, dump } from 'js-yaml';
 import { Config, defaults, fromData, toYaml } from '../engine/config';
@@ -210,8 +211,25 @@ interface RunStatus {
   stages: Partial<Record<Stage, string>>;
   progress: { stage?: Stage; done?: number; total?: number; eta?: number };
   started: number | null; ended: number | null; lines: string[]; changed: boolean; timelapse: number | null;
+  // the run's device, once the worker has chosen it: on the processor, and why
+  cpu: { reason: string } | null | undefined;
 }
-const st: RunStatus = { state: 'idle', stages: {}, progress: {}, started: null, ended: null, lines: [], changed: false, timelapse: null };
+const st: RunStatus = { state: 'idle', stages: {}, progress: {}, started: null, ended: null, lines: [], changed: false, timelapse: null, cpu: undefined };
+const forceCpu = new URLSearchParams(location.search).has('cpu');
+
+/** Why the timelapse will be made on the processor, or null when this browser offers a GPU. The worker
+ * decides for itself; this is what the page can tell before a run. */
+export async function gpuProblem(): Promise<string | null> {
+  if (forceCpu) return 'the page was asked to use the processor';
+  if (!navigator.gpu) return 'this browser has no WebGPU';
+  try {
+    // as Gpu.create: headless Chrome on Linux sometimes returns no adapter to the first request of a page
+    const ask = () => navigator.gpu.requestAdapter({ powerPreference: 'high-performance' });
+    return (await ask() ?? await ask()) ? null : 'WebGPU found no graphics card it can use';
+  } catch (e) {
+    return e instanceof Error ? e.message : String(e);
+  }
+}
 let worker: Worker | null = null;
 let runConfig = '';
 let stageStart = 0;
@@ -223,7 +241,9 @@ function ensureWorker(): Worker {
   worker = new Worker(new URL('../engine/worker.ts', import.meta.url), { type: 'module' });
   worker.onmessage = (ev: MessageEvent<FromWorker>) => {
     const m = ev.data;
-    if (m.type === 'stage') {
+    if (m.type === 'device') {
+      st.cpu = m.cpu ? { reason: m.reason === 'asked for' ? 'the page was asked to use the processor' : m.reason } : null;
+    } else if (m.type === 'stage') {
       st.stages[m.stage] = m.how;
       if (m.how === 'running') { st.progress = {}; stageStart = performance.now(); }
     } else if (m.type === 'progress') {
@@ -254,7 +274,7 @@ function ensureWorker(): Worker {
 
 export function runStatus(): RunStatus {
   st.changed = st.started !== null && !!key && JSON.stringify(read(key)?.config) !== runConfig;
-  return { ...st, stages: { ...st.stages }, progress: { ...st.progress } };
+  return { ...st, stages: { ...st.stages }, progress: { ...st.progress }, cpu: st.cpu && { ...st.cpu } };
 }
 
 export function run(): RunStatus {
@@ -264,12 +284,8 @@ export function run(): RunStatus {
   runConfig = JSON.stringify(cfg);
   Object.assign(st, { state: 'running', stages: { register: 'running' }, progress: {}, started: Date.now() / 1000, ended: null, lines: [] });
   stageStart = performance.now();
-  if (!navigator.gpu) {
-    Object.assign(st, { state: 'failed', lines: ['This browser has no WebGPU, which making the timelapse needs: use a recent Chrome, Edge or Safari.'], ended: Date.now() / 1000 });
-    return runStatus();
-  }
   (navigator as any).wakeLock?.request('screen').then((w: typeof wake) => { wake = w; }).catch(() => {});
-  ensureWorker().postMessage({ type: 'run', file, video: key, config: cfg } satisfies ToWorker);
+  ensureWorker().postMessage({ type: 'run', file, video: key, config: cfg, cpu: forceCpu } satisfies ToWorker);
   return runStatus();
 }
 

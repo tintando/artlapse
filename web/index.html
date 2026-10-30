@@ -6,6 +6,16 @@
 <title>Artlapse</title>
 <link rel="icon" href="data:,">
 <meta name="description" content="Rebuild a painting timelapse from your stream recording, in your browser.">
+<!-- the preview a link to the site gets: public/social.png is the repository's social card, 1280x640 -->
+<meta property="og:type" content="website">
+<meta property="og:url" content="https://artlapse.tintan.do/">
+<meta property="og:title" content="Artlapse">
+<meta property="og:description" content="Rebuild a painting timelapse from your stream recording, in your browser.">
+<meta property="og:image" content="https://artlapse.tintan.do/social.png">
+<meta property="og:image:width" content="1280">
+<meta property="og:image:height" content="640">
+<meta property="og:image:alt" content="artlapse: a sketched stream screen with the Workspace, Target and Exclude boxes drawn on it">
+<meta name="twitter:card" content="summary_large_image">
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
 <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Lato:wght@400;700;900&display=swap">
@@ -156,6 +166,8 @@
   #repo:hover { border-color:var(--strong); background:var(--hover); }
   #repo svg { width:15px; height:15px; fill:currentColor; }
   #slow .card { max-width:460px; }
+  /* made on the processor: said before, during and after a run */
+  #cpuNote { border-left-color:var(--warn); margin:0; }
   /* the recording, and the setup as a file */
   #file .name { font-size:12.5px; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; margin-bottom:6px; }
   #file .name b { font-weight:700; }
@@ -288,6 +300,7 @@
   </div>
   <section id="make">
     <div class="row"><label for="length">Timelapse length</label><select id="length"></select></div>
+    <div class="note" id="cpuNote" hidden><span></span></div>
     <div id="runStatus" hidden>
       <div id="runStage"></div>
       <div class="progress"><div></div></div>
@@ -343,7 +356,8 @@
         The Target's frame can't be in a cut, or outside Start–End.</p></div>
     <div><h3>Making the timelapse</h3>
       <p>Once nothing is marked in red, press <b>Make timelapse</b>. It follows the canvas through the stream, rebuilds
-        the painting, then makes the video, all on this computer's graphics card; a long stream takes a while, so keep this tab open.
+        the painting, then makes the video, all on this computer's graphics card (in a browser that can't use it, on the
+        processor instead, much more slowly); a long stream takes a while, so keep this tab open.
         Made again after a change, it redoes only what the change affects: a new length only remakes the video.
         Save the video before you close the tab: it isn't kept.</p></div>
     <div><h3>Mouse and keys</h3>
@@ -870,8 +884,20 @@ async function poll() {
   renderRun(st);
   if (st.state === 'running') pollTimer = setTimeout(poll, 1000);
 }
+// Without a GPU the timelapse is made on the processor. The page's own check says so before a run; once a
+// run's worker has chosen, its word counts.
+let cpuReason = null;
+const esc = t => t.replace(/[&<>]/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;' })[c]);
+api.gpuProblem().then(r => { cpuReason = r; renderRun(api.runStatus()); });
 function renderRun(st) {
   const running = st.state === 'running', $ = id => document.getElementById(id);
+  // during a run, only the worker's word: it may get a GPU where the page's check got none
+  const cpu = st.cpu !== undefined ? st.cpu?.reason ?? null : running ? null : cpuReason;
+  $('cpuNote').hidden = cpu == null;
+  if (cpu != null) $('cpuNote').querySelector('span').innerHTML = running
+    ? `<b>Running on the processor</b>, not the graphics card, because ${esc(cpu)}: this takes much longer.`
+    : `<b>No graphics card here.</b> The timelapse will be made on this computer's processor, because ${esc(cpu)}.
+       It comes out the same but takes much longer. Chrome or Edge on a computer use the graphics card.`;
   $('runStatus').hidden = !running; $('run').hidden = running;
   $('runChanged').hidden = !(st.changed && (running || st.state === 'done'));
   $('runChanged').querySelector('span').textContent = running
@@ -891,7 +917,7 @@ function renderRun(st) {
   $('resultText').textContent =
     st.state === 'done' && ['register', 'composite', 'render'].every(k => st.stages[k] === 'skipped') ?
       'Nothing had changed: the timelapse was already up to date.' :
-    st.state === 'done' ? `Done ${clockTime(st.ended)}, after ${duration(st.ended - st.started)}.` :
+    st.state === 'done' ? `Done ${clockTime(st.ended)}, after ${duration(st.ended - st.started)}${st.cpu ? ', on the processor' : ''}.` :
     st.state === 'failed' ? 'It stopped with an error:' :
     st.state === 'stopped' ? 'Stopped.' + (st.timelapse ? ` The last timelapse is from ${clockTime(st.timelapse)}.` : '') :
     st.timelapse ? `The last timelapse is from ${clockTime(st.timelapse)}.` : '';

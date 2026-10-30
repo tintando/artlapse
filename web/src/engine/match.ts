@@ -62,7 +62,16 @@ fn main(@builtin(global_invocation_id) gid: vec3u, @builtin(local_invocation_ind
 `;
 }
 
-export class Matcher {
+/** What register needs of matching: this GPU one, or the processor's (cpu.ts). */
+export interface Knn {
+  /** Replace the map's descriptors ((N, 128) bytes). */
+  setMap(desc: Uint8Array, n: number): void;
+  /** For each query set: per query [best index, best squared distance, second index, second squared
+   * distance] (Uint32Array of 4 per query). */
+  knn2(queries: Uint8Array[]): Promise<Uint32Array[]>;
+}
+
+export class Matcher implements Knn {
   private map: GPUBuffer;
   private mapCap = 0;
   private nm = 0;

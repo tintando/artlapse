@@ -1,3 +1,7 @@
 # file names under /assets carry a hash of their content
 /assets/*
   Cache-Control: public, max-age=31536000, immutable
+# cross-origin isolation: it gives the processor fallback (src/engine/team.ts) memory its workers share
+/*
+  Cross-Origin-Opener-Policy: same-origin
+  Cross-Origin-Embedder-Policy: require-corp
