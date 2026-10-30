@@ -1,0 +1,19 @@
+# Python-generated files
+__pycache__/
+*.py[oc]
+build/
+dist/
+wheels/
+*.egg-info
+
+# Virtual environments
+.venv
+*.mp4
+# ...but the README's video
+!/docs/media/*.mp4
+*.mkv
+*.ts
+# ...but TypeScript in the browser version
+!/web/**/*.ts
+*.log
+/work/
