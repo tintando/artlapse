@@ -11,7 +11,7 @@ Any art program · any stream layout · zoom, pan, rotate and flip · runs in yo
 
 https://github.com/user-attachments/assets/aa40c0b5-fddf-482a-9894-c7fc32e7cd53
 
-<sub>Illustration and stream by <a href="https://x.com/SlimyMana">SlimyMana</a>. Left: six hours of a stream. Right: the painting Artlapse rebuilt from it, the timelapse it made. <a href="docs/media/stream-and-painting.mp4">Watch the video</a>. </sub>
+<sub>Illustration and stream by <a href="https://x.com/SlimyMana">SlimyMana</a>. Left: six hours of a stream. Right: the painting Artlapse rebuilt from it, the timelapse it made.</sub>
 
 </div>
 <br/>
