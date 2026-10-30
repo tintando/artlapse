@@ -111,3 +111,10 @@ If the painting jumps or smears for a stretch, Artlapse lost track of where the 
 The stream and the illustration in the video and the screenshots are by [SlimyMana](https://x.com/SlimyMana).
 
 Artlapse is built on [OpenCV](https://opencv.org/) (its SIFT features find the canvas; the website's are a WebGPU port of them), [NumPy](https://numpy.org/) and [FFmpeg](https://ffmpeg.org/); on the GPU, [CuPy](https://cupy.dev/) and [COLMAP](https://colmap.github.io/)'s SiftGPU. The website reads and writes video with [Mediabunny](https://mediabunny.dev/) over the browser's WebCodecs.
+
+## License
+
+MIT, [`LICENSE`](LICENSE), with two exceptions:
+
+- **The website's SIFT** (`web/src/engine/sift.ts`, `sift-cpu.ts`, `cpu-kernels.ts`) follows OpenCV's `sift.simd.cpp` step by step, so it also carries OpenCV's terms, the [Apache License 2.0](https://github.com/opencv/opencv/blob/4.x/LICENSE).
+- **The stream and the illustration** in `docs/media/` belong to [SlimyMana](https://x.com/SlimyMana) and are not covered by the MIT license.
