@@ -1,3 +1,6 @@
+
+
+
 <div align="center">
 
 # Artlapse
@@ -6,9 +9,9 @@ Turn the recording of your painting stream into a timelapse of the painting.
 
 Any art program · any stream layout · zoom, pan, rotate and flip · runs in your browser, nothing uploaded
 
-<a href="docs/media/stream-and-painting.mp4"><img src="docs/media/stream-and-painting.jpg" width="100%" alt="Left, SlimyMana's stream with the canvas tilted and zoomed behind her avatar and chat; right, the same painting rebuilt by Artlapse, upright and whole"></a>
+https://github.com/user-attachments/assets/aa40c0b5-fddf-482a-9894-c7fc32e7cd53
 
-<sub>Illustration and stream by <a href="https://x.com/SlimyMana">SlimyMana</a>. Left: six hours of a stream, a different moment every frame. Right: the painting Artlapse rebuilt from it, the timelapse it made. <a href="docs/media/stream-and-painting.mp4">Watch the video</a>. </sub>
+<sub>Illustration and stream by <a href="https://x.com/SlimyMana">SlimyMana</a>. Left: six hours of a stream. Right: the painting Artlapse rebuilt from it, the timelapse it made. <a href="docs/media/stream-and-painting.mp4">Watch the video</a>. </sub>
 
 </div>
 <br/>
