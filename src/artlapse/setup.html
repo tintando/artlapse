@@ -211,6 +211,8 @@
   #tour h3 { margin:0 0 4px; font-size:15px; color:var(--heading); }
   #tour p { margin:0 0 12px; font-size:13px; }
   #tour button.primary { width:auto; padding:6px 16px; }
+  /* the tour without a video: the example picture has its boxes drawn already */
+  body.example #overlay { display:none; }
   /* a narrow screen (a phone): the video above, the sidebar under it, the page scrolling; boxes are drawn
      on the video only, so a swipe beside it scrolls */
   @media (max-width:760px) {
@@ -1034,13 +1036,16 @@ importFile.onchange = async () => {
 document.getElementById('exportSetup').onclick = async () => { if (await flush()) location.href = '/export'; };
 
 // The tour, shown on the first visit: one part of the page lit at a time. Whether it has been seen is
-// remembered by this browser only.
+// remembered by this browser only. A step's `example` is its text when there is no video (see showExample).
 const TOUR = [
   { title: 'Welcome', text: 'This page sets up a timelapse of your stream: you mark a few areas on the recording, ' +
-    'and Artlapse rebuilds the painting from it. Here is a quick look around.' },
+    'and Artlapse rebuilds the painting from it. Here is a quick look around.',
+    example: 'This page sets up a timelapse of your stream: you mark a few areas on the recording, ' +
+    'and Artlapse rebuilds the painting from it. Here is a quick look around, on an example: your own recording takes its place when you load it.' },
   { el: '#stage', title: 'Your recording', text: 'You draw right on the video. Pause on a good moment first: ' +
-    '<kbd>Space</kbd> plays and pauses.' },
-  { el: '#file', title: 'The video and the setup', text: '<b>Load video</b> picks another recording. <b>Export setup</b> ' +
+    '<kbd>Space</kbd> plays and pauses.',
+    example: 'Your video shows here, and you draw right on it. This example has its boxes drawn already.' },
+  { el: '#file', title: 'The video and the setup', text: '<b>Load video</b> picks a recording. <b>Export setup</b> ' +
     'saves your boxes to a file, and <b>Import setup</b> brings them back: handy for the next stream with the same layout.' },
   { el: '#draw', title: 'Three kinds of box', text: 'Pick a tool, then drag on the video. <b class="ws">Workspace</b>: ' +
     'where you paint. <b class="ex">Exclude</b>: things on top of it, like your avatar or the chat. ' +
@@ -1053,20 +1058,54 @@ const TOUR = [
   { el: '#make', title: 'Make the timelapse', text: 'Choose how long it should be, then press Make timelapse. ' +
     'Anything that would stop or spoil it is listed at the top of this panel.' },
   { el: '#helpOpen', title: 'Any time', text: 'How it works explains each box, with an example setup. ' +
-    'You can take this tour again from there.' },
+    'You can take this tour again from there.',
+    example: 'Close this to load your recording. How it works explains each box, with an example setup, ' +
+    'and you can take this tour again from there.' },
 ];
 const tourEl = document.getElementById('tour'), TOURED = 'artlapse.toured';
 let tourStep = null;
 const toured = () => { try { return localStorage.getItem(TOURED) === '1'; } catch (e) { return false; } };
-function startTour() { video.pause(); select(null); tourStep = 0; tourEl.hidden = false; showStep(); }
+// Without a video most of the page is hidden, so the tour shows it on the example from How it works, with
+// the boxes of that picture in the list. Nothing here is kept: `loaded` stays false, so nothing is saved, and
+// main and aside are inert under the tour. Taking this tour doesn't count as having seen it: the one on the
+// visitor's own recording still comes.
+let example = null;  // what the page was, while it shows the example
+async function showExample() {
+  const img = new Image(); img.src = document.querySelector('.modal figure img').src;
+  await img.decode().catch(() => {});
+  example = { state: structuredClone(state), W, H, D };
+  W = 1920; H = 1080; D = 2 * 3600;
+  Object.assign(state, { workspace: [91, 51, 1506, 1026], exclude: [{ r: [1179, 503, 418, 574], name: 'Avatar' }, { r: [115, 811, 554, 242], name: 'Chat' }],
+    reference: { time: 6720, target: [303, 163, 914, 614] }, start: 0, end: null, cuts: [[3000, 3400]], duration: 60 });
+  document.body.classList.remove('empty'); document.body.classList.add('example');
+  document.getElementById('empty').hidden = true;
+  mainEl.inert = document.querySelector('aside').inert = true;
+  video.poster = img.src; video.currentTime = state.reference.time; timeEl.textContent = fmt(video.currentTime);
+  const c = document.createElement('canvas'); c.width = 600; c.height = Math.round(600 * H / W);
+  if (img.complete && img.naturalWidth) { c.getContext('2d').drawImage(img, 0, 0, c.width, c.height); stillFrame = { canvas: c, time: state.reference.time }; }
+  lengthChoices(); renderList(); renderHint(); render(); drawThumb(); renderChecks();
+}
+function hideExample() {
+  Object.assign(state, example.state); ({ W, H, D } = example); example = null; stillFrame = null;
+  document.body.classList.add('empty'); document.body.classList.remove('example');
+  document.getElementById('empty').hidden = false;
+  mainEl.inert = document.querySelector('aside').inert = false;
+  video.removeAttribute('poster'); video.currentTime = 0; timeEl.textContent = fmt(0);
+}
+async function startTour() {
+  video.pause();
+  if (document.body.classList.contains('empty')) await showExample();
+  select(null); tourStep = 0; tourEl.hidden = false; showStep();
+}
 function endTour() {
   tourEl.hidden = true; tourStep = null;
+  if (example) return hideExample();
   try { localStorage.setItem(TOURED, '1'); } catch (e) { /* shown again next time */ }
 }
 function showStep() {
   const s = TOUR[tourStep], card = tourEl.querySelector('.card'), spot = tourEl.querySelector('.spot');
   card.querySelector('.count').textContent = `${tourStep + 1} of ${TOUR.length}`;
-  card.querySelector('h3').textContent = s.title; card.querySelector('p').innerHTML = s.text;
+  card.querySelector('h3').textContent = s.title; card.querySelector('p').innerHTML = (example && s.example) || s.text;
   document.getElementById('tourBack').hidden = tourStep === 0;
   document.getElementById('tourNext').textContent = tourStep === TOUR.length - 1 ? 'Done' : 'Next';
   document.getElementById('tourSkip').hidden = tourStep === TOUR.length - 1;
