@@ -172,7 +172,7 @@
   /* made on the processor: said before, during and after a run */
   #cpuNote { border-left-color:var(--warn); margin:0; }
   /* the recording, and the setup as a file */
-  #file .name { font-size:12.5px; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; margin-bottom:6px; }
+  #file .name { font-size:12.5px; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; margin-bottom:6px; min-height:1.45em; }
   #file .name b { font-weight:700; }
   .files { display:grid; grid-template-columns:repeat(3, minmax(0, 1fr)); gap:6px; }
   .files button { padding:4px 4px; font-size:12.5px; white-space:nowrap; }
@@ -256,13 +256,13 @@
   @media (hover:none) { #keys { display:none; } }
 </style>
 </head>
-<body>
+<body class="empty">
 <main>
   <div id="stage"><div id="wrap">
     <video id="video" preload="metadata" muted></video>
     <canvas id="overlay"></canvas>
   </div>
-  <div id="empty" hidden><h2>Start with your stream's recording</h2>
+  <div id="empty"><h2>Start with your stream's recording</h2>
     <p>Load the video file of the stream you painted in, and Artlapse rebuilds the painting from it as a timelapse.</p>
     <div class="note" id="noCodecs" hidden><span></span></div>
     <div class="load"><button class="primary" id="emptyLoad">Load video…</button><button id="reopen" hidden></button></div>

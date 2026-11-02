@@ -46,6 +46,12 @@ for (const [name, viewport] of [['desktop', { width: 1600, height: 1000 }], ['ph
   await page.setViewport(viewport);
   page.on('pageerror', e => check(false, `${name}: page error: ${e.message}`));
   await page.evaluateOnNewDocument(() => { delete window.showOpenFilePicker; });
+  // the page before its script has run, as it is painted first: no empty video and tools waiting for one
+  await page.setJavaScriptEnabled(false);
+  await page.goto(base);
+  const first = await page.$$eval('#wrap, #bar, #draw, #make', els => els.filter(el => el.getClientRects().length).map(el => el.id));
+  check(!first.length, `${name}: nothing of the interface shows before the script runs (${first})`);
+  await page.setJavaScriptEnabled(true);
   await page.goto(base);
   await page.waitForSelector('#empty:not([hidden])');
   const seen = () => page.evaluate(() => localStorage.getItem('artlapse.toured') === '1');
