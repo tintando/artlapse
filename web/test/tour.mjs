@@ -46,21 +46,23 @@ for (const [name, viewport] of [['desktop', { width: 1600, height: 1000 }], ['ph
   check(await page.$eval('#tour', el => el.hidden), `${name}: no tour by itself on the empty page`);
 
   await page.evaluate(() => { const slow = document.getElementById('slow'); if (slow) slow.hidden = true; });  // the website's warning on a touch screen
-  await page.click('#helpOpen');
-  await page.click('#tourAgain');
+  const screen = await page.$eval('#empty', el => el.textContent);
+  check(screen.includes('No upload'), `${name}: the empty screen says there is no upload`);
+  await page.screenshot({ path: `${out}/${name}-empty-screen.png` });
+  await page.click('#emptyTour');
   await page.waitForSelector('#tour:not([hidden])');
   await walk(page, `${name}-empty`);
 
   const after = await page.evaluate(() => ({
-    empty: document.body.classList.contains('empty'), example: document.body.classList.contains('example'),
+    empty: document.body.classList.contains('empty'),
     prompt: !document.getElementById('empty').hidden, poster: document.getElementById('video').hasAttribute('poster'),
     inert: document.querySelector('main').inert || document.querySelector('aside').inert,
     draw: getComputedStyle(document.getElementById('draw')).display }));
-  check(after.empty && !after.example && after.prompt && !after.poster && !after.inert && after.draw === 'none',
+  check(after.empty && after.prompt && !after.poster && !after.inert && after.draw === 'none',
     `${name}: the page is empty again ${JSON.stringify(after)}`);
   check(await stored() === before, `${name}: nothing kept in localStorage`);
 
-  // Escape ends it the same way
+  // from How it works too, and Escape ends it the same way
   await page.click('#helpOpen');
   await page.click('#tourAgain');
   await page.waitForSelector('#tour:not([hidden])');

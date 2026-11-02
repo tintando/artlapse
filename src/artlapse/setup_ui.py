@@ -276,6 +276,8 @@ def _handler(work: Path, run: Run):
                 self.wfile.write(body)
             elif path == "/example.svg":  # the example setup in "How it works"
                 self._send(resources.files("artlapse").joinpath("setup-example.svg").read_bytes(), "image/svg+xml")
+            elif path == "/tour-example.svg":  # the recording's stand-in in the tour without a video
+                self._send(resources.files("artlapse").joinpath("setup-tour-example.svg").read_bytes(), "image/svg+xml")
             elif path == "/video":
                 self._file(Path(Config.load(cfg_path).video) if cfg_path.exists() else work / "no video")
             elif path == "/timelapse":

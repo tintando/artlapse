@@ -1,6 +1,6 @@
 """Diagrams for docs/: a sketched stream screen with the setup page's zones drawn on it.
 
-    uv run python scripts/figures.py          # writes docs/figures/*.svg, and the setup page's example
+    uv run python scripts/figures.py          # writes docs/figures/*.svg, and the setup page's example and tour picture
 
 The setup page's "How it works" shows the target figure, from its own copy inside the package.
 
@@ -16,6 +16,8 @@ from pathlib import Path
 ROOT = Path(__file__).resolve().parent.parent
 OUT = ROOT / "docs" / "figures"
 PAGE_EXAMPLE = ROOT / "src" / "artlapse" / "setup-example.svg"  # served by the setup page
+# the tour's stand-in for a recording: the example, with its exclusions named as in the page's list
+TOUR_PICTURE = (ROOT / "src" / "artlapse" / "setup-tour-example.svg", ROOT / "web" / "public" / "tour-example.svg")
 W, H = 960, 540  # a 1920x1080 stream at half size
 
 # the setup page's colours
@@ -154,6 +156,13 @@ def svg(title: str, body: str, h: int = H) -> str:
             f'{body}{rect((1, 1, W - 2, h - 2), fill="none", stroke="#9da1aa", stroke_width=2)}</svg>\n')
 
 
+def zones(avatar: str, chat: str) -> str:
+    return (screen() + dim_outside(WORKSPACE) + zone(WORKSPACE, WS) + zone(AVATAR, EX, hatch="ex") +
+            zone(CHAT, EX, hatch="ex") + zone(PAPER, TG) + label(788, 34, "Workspace", WS, "end") +
+            label(158, 52, "Target", TG) + label(798, 220, avatar, EX, "end") + label(62, 374, chat, EX) +
+            donation() + zone(DONATION_ZONE, OK, hatch="ok") + label(50, 164, "OK", OK))
+
+
 FIGURES = {
     "stream": ("A stream screen: the art program, its canvas, and overlays on top",
                screen() +
@@ -161,10 +170,7 @@ FIGURES = {
                note(704, 214, "the streamer's avatar", "middle") + note(196, 374, "chat", "middle") +
                note(880, 446, "follower goal", "middle"), H),
     "target": ("The zones on the frame the target is drawn on: workspace, exclusions, target",
-               screen() + dim_outside(WORKSPACE) + zone(WORKSPACE, WS) + zone(AVATAR, EX, hatch="ex") +
-               zone(CHAT, EX, hatch="ex") + zone(PAPER, TG) + label(788, 34, "Workspace", WS, "end") +
-               label(158, 52, "Target", TG) + label(798, 220, "Exclude", EX, "end") + label(62, 374, "Exclude", EX) +
-               donation() + zone(DONATION_ZONE, OK, hatch="ok") + label(50, 164, "OK", OK), H),
+               zones("Exclude", "Exclude"), H),
 }
 
 
@@ -176,6 +182,9 @@ def main() -> None:
     title, body, h = FIGURES["target"]
     PAGE_EXAMPLE.write_text(svg(title, body, h))
     print(PAGE_EXAMPLE)
+    for path in TOUR_PICTURE:
+        path.write_text(svg("The example stream screen, its exclusions named Avatar and Chat", zones("Avatar", "Chat")))
+        print(path)
 
 
 if __name__ == "__main__":

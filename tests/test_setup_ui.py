@@ -134,6 +134,7 @@ def test_the_page_and_its_example_figure_are_served(server):
     work, url = server
     page = urllib.request.urlopen(f"{url}/").read().decode()
     assert "How it works" in page and 'src="/example.svg"' in page
+    assert urllib.request.urlopen(f"{url}/tour-example.svg").headers["Content-Type"] == "image/svg+xml"
     figure = urllib.request.urlopen(f"{url}/example.svg")
     assert figure.headers["Content-Type"] == "image/svg+xml" and figure.read().startswith(b"<svg")
 

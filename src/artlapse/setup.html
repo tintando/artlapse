@@ -159,7 +159,18 @@
   body.empty #wrap, body.empty #bar, body.empty #range, body.empty #draw, body.empty #regions, body.empty #still,
   body.empty #make, body.empty #checks { display:none !important; }
   body.empty main { cursor:default; }
-  #empty { text-align:center; max-width:440px; }
+  #empty { text-align:center; width:min(500px, 100%); background:var(--panel); border:1px solid var(--line); border-radius:16px;
+           padding:28px; box-shadow:var(--shadow); cursor:default; }
+  #empty .load { display:flex; flex-wrap:wrap; justify-content:center; align-items:center; gap:8px; }
+  /* what a visitor with a recording of many hours fears most, right under the button */
+  #empty .promise { display:flex; gap:8px; align-items:center; justify-content:center; text-align:left; margin:16px 0; padding:10px 12px; border-radius:10px;
+                    background:color-mix(in srgb, var(--ws) 10%, var(--panel)); }
+  #empty .promise svg { width:22px; height:22px; flex:none; fill:none; stroke:var(--ws); stroke-width:2; stroke-linecap:round; stroke-linejoin:round; }
+  #empty .promise p { margin:0; color:var(--text); }
+  #empty .promise b { color:var(--ws); }
+  #empty .others { display:grid; grid-template-columns:repeat(2, minmax(0, 1fr)); gap:8px; }
+  #empty .others button { border-radius:12px; padding:8px 10px; font-weight:700; }
+  #empty .others small { display:block; font-weight:400; font-size:11.5px; color:var(--muted); }
   #empty h2 { font-size:24px; font-weight:900; border:none; margin-bottom:8px;
               background:var(--grad); -webkit-background-clip:text; background-clip:text; color:transparent; }
   #empty p { color:var(--muted); margin:0 0 18px; }
@@ -211,7 +222,7 @@
   #tour h3 { margin:0 0 4px; font-size:15px; color:var(--heading); }
   #tour p { margin:0 0 12px; font-size:13px; }
   #tour button.primary { width:auto; padding:6px 16px; }
-  /* the tour without a video: the example picture has its boxes drawn already */
+  /* the tour without a video: its picture has the boxes on it */
   body.example #overlay { display:none; }
   /* a narrow screen (a phone): the video above, the sidebar under it, the page scrolling; boxes are drawn
      on the video only, so a swipe beside it scrolls */
@@ -239,9 +250,13 @@
     <canvas id="overlay"></canvas>
   </div>
   <div id="empty" hidden><h2>Start with your stream's recording</h2>
-    <p>Load the video file of the stream you painted in. Nothing is copied: Artlapse reads it where it is.</p>
-    <button class="primary" id="emptyLoad">Load video…</button>
-    <p style="margin:14px 0 0">or <button id="emptyImport">Import a setup…</button> exported from another stream</p></div>
+    <p>Load the video file of the stream you painted in, and Artlapse rebuilds the painting from it as a timelapse.</p>
+    <div class="load"><button class="primary" id="emptyLoad">Load video…</button></div>
+    <div class="promise"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 3l8 3v6c0 4.5-3.2 7.8-8 9-4.8-1.2-8-4.5-8-9V6z"/><path d="M8.5 12l2.5 2.5 4.5-5"/></svg><p><b>No upload.</b> Your video opens instantly on this computer.</p></div>
+    <div class="others">
+      <button id="emptyTour">Take the tour<small>see the page first, no video needed</small></button>
+      <button id="emptyImport">Import a setup…<small>exported from another stream</small></button>
+    </div></div>
   </div>
   <div id="bar">
     <button id="play">Play</button>
@@ -923,6 +938,7 @@ document.getElementById('helpOpen').onclick = () => showHelp(true);
 document.getElementById('helpClose').onclick = document.getElementById('helpDone').onclick = () => showHelp(false);
 help.onclick = ev => { if (ev.target === help) showHelp(false); };
 document.getElementById('tourAgain').onclick = () => { showHelp(false); startTour(); };
+document.getElementById('emptyTour').onclick = () => startTour();
 
 // light or dark: the system's choice (light when it has none) until the switch picks the other one, remembered;
 // switching back to the system's choice follows the system again
@@ -1065,18 +1081,18 @@ const TOUR = [
 const tourEl = document.getElementById('tour'), TOURED = 'artlapse.toured';
 let tourStep = null;
 const toured = () => { try { return localStorage.getItem(TOURED) === '1'; } catch (e) { return false; } };
-// Without a video most of the page is hidden, so the tour shows it on the example from How it works, with
-// the boxes of that picture in the list. Nothing here is kept: `loaded` stays false, so nothing is saved, and
+// Without a video most of the page is hidden, so the tour shows it on an example: a picture of a stream with
+// its boxes in the video's place, and the same boxes in the list. Nothing here is kept: `loaded` stays false, so nothing is saved, and
 // main and aside are inert under the tour. Taking this tour doesn't count as having seen it: the one on the
 // visitor's own recording still comes.
 let example = null;  // what the page was, while it shows the example
 async function showExample() {
-  const img = new Image(); img.src = document.querySelector('.modal figure img').src;
+  const img = new Image(); img.src = 'tour-example.svg';
   await img.decode().catch(() => {});
   example = { state: structuredClone(state), W, H, D };
   W = 1920; H = 1080; D = 2 * 3600;
-  Object.assign(state, { workspace: [91, 51, 1506, 1026], exclude: [{ r: [1179, 503, 418, 574], name: 'Avatar' }, { r: [115, 811, 554, 242], name: 'Chat' }],
-    reference: { time: 6720, target: [303, 163, 914, 614] }, start: 0, end: null, cuts: [[3000, 3400]], duration: 60 });
+  Object.assign(state, { workspace: [88, 48, 1512, 1032], exclude: [{ r: [1176, 500, 424, 580], name: 'Avatar' }, { r: [112, 808, 560, 248], name: 'Chat' }],
+    reference: { time: 6720, target: [300, 160, 920, 620] }, start: 0, end: null, cuts: [[3000, 3400]], duration: 60 });
   document.body.classList.remove('empty'); document.body.classList.add('example');
   document.getElementById('empty').hidden = true;
   mainEl.inert = document.querySelector('aside').inert = true;
