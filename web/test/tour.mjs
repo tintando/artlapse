@@ -1,6 +1,7 @@
 // The tour in headless Chrome, on a desktop's and a phone's window: with no video it shows the page on the
-// example, lights something at every step, leaves the page empty and keeps nothing; the tour on a recording
-// still comes after it. node test/tour.mjs <out dir> [video]
+// example, lights something at every step, leaves the page empty and keeps only that it has been seen, so it
+// doesn't start again on a recording; a visitor who never took it gets it on their first recording.
+// node test/tour.mjs <out dir> [video]
 // BASE is the page's address (default the test server). Without a video only the empty page is tested.
 // The out dir gets a screenshot of each step; it must not exist yet.
 import { mkdirSync, existsSync } from 'node:fs';
@@ -33,6 +34,12 @@ async function walk(page, name) {
   check(await page.$eval('#tour', el => el.hidden), `${name}: the tour ended`);
 }
 
+async function loadRecording(page) {
+  const [chooser] = await Promise.all([page.waitForFileChooser(), page.click('#emptyLoad')]);
+  await chooser.accept([videoPath]);
+  await page.waitForFunction(() => document.getElementById('empty').hidden && document.getElementById('video').readyState >= 2, { timeout: 60e3 });
+}
+
 for (const [name, viewport] of [['desktop', { width: 1600, height: 1000 }], ['phone', { width: 390, height: 844, hasTouch: true }]]) {
   const context = await browser.createBrowserContext();
   const page = await context.newPage();
@@ -41,8 +48,10 @@ for (const [name, viewport] of [['desktop', { width: 1600, height: 1000 }], ['ph
   await page.evaluateOnNewDocument(() => { delete window.showOpenFilePicker; });
   await page.goto(base);
   await page.waitForSelector('#empty:not([hidden])');
-  const stored = () => page.evaluate(() => JSON.stringify(Object.entries(localStorage).sort()));
-  const before = await stored();
+  const seen = () => page.evaluate(() => localStorage.getItem('artlapse.toured') === '1');
+  // what is kept, but for that the tour has been seen
+  const kept = () => page.evaluate(() => JSON.stringify(Object.entries(localStorage).filter(([k]) => k !== 'artlapse.toured').sort()));
+  const keptBefore = await kept();
   check(await page.$eval('#tour', el => el.hidden), `${name}: no tour by itself on the empty page`);
 
   await page.evaluate(() => { const slow = document.getElementById('slow'); if (slow) slow.hidden = true; });  // the website's warning on a touch screen
@@ -60,24 +69,37 @@ for (const [name, viewport] of [['desktop', { width: 1600, height: 1000 }], ['ph
     draw: getComputedStyle(document.getElementById('draw')).display }));
   check(after.empty && after.prompt && !after.poster && !after.inert && after.draw === 'none',
     `${name}: the page is empty again ${JSON.stringify(after)}`);
-  check(await stored() === before, `${name}: nothing kept in localStorage`);
+  check(await kept() === keptBefore, `${name}: nothing of the example kept in localStorage`);
+  check(await seen(), `${name}: the tour on the empty page counts as seen`);
 
   // from How it works too, and Escape ends it the same way
   await page.click('#helpOpen');
   await page.click('#tourAgain');
   await page.waitForSelector('#tour:not([hidden])');
   await page.keyboard.press('Escape');
-  check(await page.$eval('body', el => el.classList.contains('empty')) && await stored() === before, `${name}: Escape leaves it empty, nothing kept`);
+  check(await page.$eval('body', el => el.classList.contains('empty')) && await kept() === keptBefore, `${name}: Escape leaves it empty, nothing kept`);
 
   if (videoPath) {
-    const [chooser] = await Promise.all([page.waitForFileChooser(), page.click('#emptyLoad')]);
-    await chooser.accept([videoPath]);
-    await page.waitForFunction(() => document.getElementById('empty').hidden && document.getElementById('video').readyState >= 2, { timeout: 60e3 });
-    await page.waitForSelector('#tour:not([hidden])');
-    check(true, `${name}: the tour on a recording still comes`);
+    await loadRecording(page);
+    await new Promise(r => setTimeout(r, 500));  // time for the tour to start, if it were going to
+    check(await page.$eval('#tour', el => el.hidden), `${name}: the tour doesn't start again on a recording`);
     check(await page.$$eval('#list li', ls => !ls.some(l => l.querySelector('input')?.value === 'Avatar')), `${name}: the example's boxes are not in the recording's setup`);
-    await walk(page, `${name}-video`);
-    check((await page.evaluate(() => localStorage.getItem('artlapse.toured'))) === '1', `${name}: now it has been seen`);
+
+    // a visitor who never took it gets it on their first recording
+    const fresh = await browser.createBrowserContext();
+    const other = await fresh.newPage();
+    await other.setViewport(viewport);
+    other.on('pageerror', e => check(false, `${name}: page error: ${e.message}`));
+    await other.evaluateOnNewDocument(() => { delete window.showOpenFilePicker; });
+    await other.goto(base);
+    await other.waitForSelector('#empty:not([hidden])');
+    await other.evaluate(() => { const slow = document.getElementById('slow'); if (slow) slow.hidden = true; });
+    await loadRecording(other);
+    await other.waitForSelector('#tour:not([hidden])');
+    check(true, `${name}: the tour starts on a first recording`);
+    await walk(other, `${name}-video`);
+    check(await other.evaluate(() => localStorage.getItem('artlapse.toured') === '1'), `${name}: now it has been seen`);
+    await fresh.close();
   }
   await context.close();
 }

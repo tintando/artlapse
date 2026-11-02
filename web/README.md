@@ -55,7 +55,7 @@ mid-run.
 ```bash
 ARTLAPSE_TEST_OUT=<fresh dir> npx vite --port 5199 --strictPort &
 node test/page.mjs <video> <setup.yaml> <fresh dir>        # the page end to end: load, import, make, save
-node test/tour.mjs <fresh dir> <video>   # the tour with no video (on the example) and on a recording, on a desktop's and a phone's window
+node test/tour.mjs <fresh dir> <video>   # the tour with no video (on the example) and on a first recording, on a desktop's and a phone's window
 QUERY='?cpu' node test/page.mjs <video> <setup.yaml> <fresh dir>   # the same on the processor
 node test/run.mjs "test/sift.html?img=<grey png>&out=<name>"   # SIFT on one image (&cpu=1: on the processor); compare with test/compare_sift.py
 node test/run.mjs "test/register.html?video=<path>&config=<path>&out=<name>"   # a track, as JSON

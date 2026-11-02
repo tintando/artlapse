@@ -1074,8 +1074,8 @@ let tourStep = null;
 const toured = () => { try { return localStorage.getItem(TOURED) === '1'; } catch (e) { return false; } };
 // Without a video most of the page is hidden, so the tour shows it on an example: a picture of a stream with
 // its boxes in the video's place, and the same boxes in the list. Nothing here is kept: `loaded` stays false, so nothing is saved, and
-// main and aside are inert under the tour. Taking this tour doesn't count as having seen it: the one on the
-// visitor's own recording still comes.
+// main and aside are inert under the tour. Taking this tour counts as having seen it: it doesn't start again
+// when the visitor loads a recording.
 let example = null;  // what the page was, while it shows the example
 async function showExample() {
   const img = new Image(); img.src = 'tour-example.svg';
@@ -1106,7 +1106,7 @@ async function startTour() {
 }
 function endTour() {
   tourEl.hidden = true; tourStep = null;
-  if (example) return hideExample();
+  if (example) hideExample();
   try { localStorage.setItem(TOURED, '1'); } catch (e) { /* shown again next time */ }
 }
 function showStep() {
